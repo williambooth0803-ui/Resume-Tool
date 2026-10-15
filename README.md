@@ -28,7 +28,9 @@ The server binds to loopback on port 3001 by default (override with `HOST` and `
 4. Download an editable `.docx`. Duplicating a version preserves its content and included sections.
 5. Download a JSON backup regularly. Restore replaces the current workspace after confirmation.
 
-All profile data, imported text, and versions are stored in this browser’s local storage. They are not synchronized across devices. Clearing site data or using another browser loses access unless you restore a backup. Local storage and backups are unencrypted: use a trusted device. No resume content leaves the browser during the manual workflow.
+Autosave covers profile and version edits, section selection, imported text, document imports/deletions, resume creation/duplication/deletion, and AI recommendations. Typing saves after a short pause (at most every two seconds during continuous input); leaving a field, clicking an action, or leaving/backgrounding the page flushes pending edits immediately. The header shows the last successful autosave time. Failed saves stay marked as unsaved across navigation, and pending edits are retained in memory for retry or backup.
+
+All profile data, imported text, recommendations, and versions are stored in this browser’s local storage. They are not synchronized across devices. Clearing site data or using another browser loses access unless you restore a backup. Local storage and backups are unencrypted: use a trusted device. No resume content leaves the browser during the manual workflow.
 
 ## Optional AI
 
@@ -44,6 +46,7 @@ npm run build
 # Start npm run dev in another terminal, then:
 npx playwright install chromium
 npm run test:browser
+npm run test:autosave
 ```
 
 Browser smoke checks cover profile persistence, imports, independent versions, inclusion toggles, DOCX content, duplication, and backup downloads. Set `RESUME_TEST_URL` to test a different local server.

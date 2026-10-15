@@ -7,7 +7,7 @@ export function createVersion(profile, title, id = crypto.randomUUID()) {
 export function validateState(value) {
   const validProfile = p => p && Object.keys(blankProfile()).every(k=>typeof p[k]==='string');
   if (!value || !validProfile(value.profile) || !Array.isArray(value.versions) || !Array.isArray(value.imports)) throw new Error('Invalid backup file.');
-  if (!value.versions.every(v=>typeof v.id==='string' && typeof v.title==='string' && typeof v.updated==='string' && typeof v.job==='string' && validProfile(v.profile) && Array.isArray(v.included) && v.included.every(s=>sections.includes(s)))) throw new Error('Invalid resume in backup.');
+  if (!value.versions.every(v=>(v.recommendations===undefined || typeof v.recommendations==='string') && typeof v.id==='string' && typeof v.title==='string' && typeof v.updated==='string' && typeof v.job==='string' && validProfile(v.profile) && Array.isArray(v.included) && v.included.every(s=>sections.includes(s)))) throw new Error('Invalid resume in backup.');
   if (!value.imports.every(i=>typeof i.id==='string' && typeof i.name==='string' && typeof i.text==='string')) throw new Error('Invalid document in backup.');
   return value;
 }
