@@ -11,7 +11,8 @@
     "test:browser": "node scripts/browser-smoke.js",
     "test:autosave": "node scripts/autosave-smoke.js",
     "test:features": "node scripts/features-smoke.js",
-    "test:cloud": "node scripts/cloud-smoke.js"
+    "test:cloud": "node scripts/cloud-smoke.js",
+    "test:connection": "node scripts/connection-smoke.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

@@ -62,3 +62,16 @@ Clicking AI recommendations sends only the selected resume's profile and target 
 The local release checks include real PostgreSQL schema tests (PGlite) for row-level security and revisions, simulated Supabase Auth/database browser tests for cross-device sync and conflicts, and mocked AI-provider tests. These do not establish that your hosted project's email delivery, keys, or policies are configured. After adding settings, test signing in and syncing between two browsers on your actual Render site.
 
 Documents are imported as reviewed extracted text; original upload files are not archived. Scanned PDFs require external OCR. Structured parsing is based on common headings and may need corrections. History retains up to 20 snapshots within a storage budget; large workspaces may retain fewer. Keep downloadable backups. PDF exports embed bundled Roboto fonts; unsupported scripts may require editing/exporting the Word file with an appropriate font.
+
+## If sign-in says “Invalid API key”
+
+Open **Account & sync → Check Supabase connection**, or open `/api/cloud-check` on the deployed website. Its JSON response contains no API-key value and is safe to share for troubleshooting. It checks the configured key against Supabase’s read-only authentication settings endpoint; it does not sign anyone in, create users, change resumes, or call OpenAI.
+
+- `key_rejected`: Supabase rejected the key for the displayed project host. Copy the complete public key and Project URL from the same Supabase project. Replace the values in Render, save, and redeploy.
+- `project_mismatch`: The legacy anon key is from a different project.
+- `wrong_provider_key`: An OpenAI-style key is in the Supabase variable.
+- `invalid_key_format` / `missing_configuration`: Correct the indicated Render variable; avoid quotes and truncated values. Leading and trailing whitespace is normalized automatically.
+- `key_accepted`: Supabase accepted the public key. Check email provider settings, app-account credentials, and email confirmation next. This result does not test database policies or cloud syncing.
+- `service_unavailable` / `connection_failed`: Check that the project is running and the Project URL is correct.
+
+Connection checks are cached for 30 seconds per server process. Redeployment reloads configuration and clears that cache. Changing the OpenAI key does not affect Supabase sign-in.

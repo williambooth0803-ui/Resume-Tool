@@ -10,37 +10,189 @@ const mime = {
   ".mjs": "text/javascript",
   ".svg": "image/svg+xml",
 };
-export function publicCloudConfig(env) {
-  const url = env.SUPABASE_URL,
-    key = env.SUPABASE_ANON_KEY;
-  if (!url || !key || key.startsWith("sb_secret_")) return null;
+export function inspectCloudConfig(env) {
+  const rawUrl = env.SUPABASE_URL || "",
+    rawKey = env.SUPABASE_ANON_KEY || "";
+  const url = rawUrl.trim(),
+    key = rawKey.trim();
+  const normalizedWhitespace = rawUrl !== url || rawKey !== key;
+  let projectHost = null;
+  const failure = (code, message, keyType = null) => ({
+    config: null,
+    details: {
+      ok: false,
+      code,
+      message,
+      projectHost,
+      keyType,
+      normalizedWhitespace,
+    },
+  });
+  if (!url || !key)
+    return failure(
+      "missing_configuration",
+      "Set both SUPABASE_URL and SUPABASE_ANON_KEY in Render. Sign-in uses the Supabase publishable or anon key.",
+    );
+  let parsed;
   try {
-    const parsed = new URL(url);
-    if (
-      parsed.protocol !== "https:" ||
-      parsed.username ||
-      parsed.password ||
-      parsed.pathname !== "/"
-    )
-      return null;
-    if (key.split(".").length === 3) {
-      const claims = JSON.parse(
+    parsed = new URL(url);
+  } catch {
+    return failure(
+      "invalid_project_url",
+      "SUPABASE_URL must be your Supabase Project URL, starting with https://.",
+    );
+  }
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username ||
+    parsed.password ||
+    parsed.pathname !== "/" ||
+    parsed.search ||
+    parsed.hash
+  )
+    return failure(
+      "invalid_project_url",
+      "Use the Supabase Project URL only, without quotes, paths, or credentials.",
+    );
+  projectHost = parsed.hostname;
+  if (key.startsWith("sb_secret_"))
+    return failure(
+      "secret_key_not_allowed",
+      "Use a Supabase publishable or legacy anon key. Secret/service-role keys cannot be sent to the browser.",
+      "secret",
+    );
+  if (key.startsWith("sk-"))
+    return failure(
+      "wrong_provider_key",
+      "SUPABASE_ANON_KEY contains an OpenAI-style key. Use the Supabase project’s publishable/anon key here; keep the OpenAI key in RESUME_AI_API_KEY.",
+      "openai",
+    );
+  let keyType;
+  if (key.startsWith("sb_publishable_")) keyType = "publishable";
+  else if (key.split(".").length === 3) {
+    let claims;
+    try {
+      claims = JSON.parse(
         Buffer.from(key.split(".")[1], "base64url").toString(),
       );
-      if (claims.role !== "anon") return null;
-    } else if (!key.startsWith("sb_publishable_")) return null;
-    return { supabaseUrl: parsed.origin, supabaseAnonKey: key };
-  } catch {
-    return null;
-  }
+    } catch {
+      return failure(
+        "invalid_key_format",
+        "The Supabase anon key is incomplete or malformed. Copy the full publishable or legacy anon key from the project API settings.",
+      );
+    }
+    if (claims.role !== "anon")
+      return failure(
+        "secret_key_not_allowed",
+        "Use the legacy anon key, not a service-role or user-session token.",
+        "legacy_other",
+      );
+    keyType = "legacy_anon";
+    const reference = parsed.hostname.endsWith(".supabase.co")
+      ? parsed.hostname.split(".")[0]
+      : null;
+    if (reference && typeof claims.ref === "string" && claims.ref !== reference)
+      return failure(
+        "project_mismatch",
+        "The legacy anon key belongs to a different project. Copy the Project URL and public key from the same Supabase project.",
+        keyType,
+      );
+  } else
+    return failure(
+      "invalid_key_format",
+      "SUPABASE_ANON_KEY must contain the full Supabase publishable key (sb_publishable_…) or legacy anon key. Paste the value without quotation marks.",
+    );
+  return {
+    config: { supabaseUrl: parsed.origin, supabaseAnonKey: key },
+    details: {
+      ok: true,
+      code: "format_valid",
+      projectHost,
+      keyType,
+      normalizedWhitespace,
+    },
+  };
+}
+export function publicCloudConfig(env) {
+  return inspectCloudConfig(env).config;
 }
 export function createResumeServer({
   env = process.env,
   fetchImpl = fetch,
   now = Date.now,
 } = {}) {
-  const cloud = publicCloudConfig(env),
+  const inspection = inspectCloudConfig(env),
+    cloud = inspection.config,
     limits = new Map();
+  let connectionCache = null;
+  async function checkCloud() {
+    if (!cloud) return inspection.details;
+    if (connectionCache && now() - connectionCache.at < 30000)
+      return connectionCache.result;
+    if (connectionCache?.promise) return connectionCache.promise;
+    const promise = (async () => {
+      const info = {
+        projectHost: inspection.details.projectHost,
+        keyType: inspection.details.keyType,
+        normalizedWhitespace: inspection.details.normalizedWhitespace,
+      };
+      try {
+        const response = await fetchImpl(
+          `${cloud.supabaseUrl}/auth/v1/settings`,
+          {
+            headers: { apikey: cloud.supabaseAnonKey },
+            signal: AbortSignal.timeout(10000),
+          },
+        );
+        if (response.status === 401 || response.status === 403)
+          return {
+            ...info,
+            ok: false,
+            code: "key_rejected",
+            message:
+              "Supabase rejected the public API key for " +
+              info.projectHost +
+              ". In Render, replace SUPABASE_ANON_KEY with the full publishable/anon key copied from this same project, then redeploy. This error occurs before your email and password are checked.",
+          };
+        if (!response.ok)
+          return {
+            ...info,
+            ok: false,
+            code: "service_unavailable",
+            message:
+              "The Supabase authentication service returned HTTP " +
+              response.status +
+              ". Check that the project is running and try again.",
+          };
+        const settings = await response.json();
+        return {
+          ...info,
+          ok: true,
+          code: "key_accepted",
+          emailProviderEnabled:
+            typeof settings.external?.email === "boolean"
+              ? settings.external.email
+              : null,
+          message:
+            settings.external?.email === false
+              ? "Supabase accepted the API key, but email sign-in is disabled in the project’s Authentication settings."
+              : "Supabase accepted the server’s public API key. Refresh the website to load the current configuration, then sign in with your app account. Email confirmation may be required.",
+        };
+      } catch {
+        return {
+          ...info,
+          ok: false,
+          code: "connection_failed",
+          message:
+            "The server could not reach Supabase. Check the Project URL, project availability, and network access.",
+        };
+      }
+    })();
+    connectionCache = { promise };
+    const result = await promise;
+    connectionCache = { at: now(), result };
+    return result;
+  }
   return http.createServer(async (req, res) => {
     const json = (status, data) => {
       res.writeHead(status, {
@@ -62,6 +214,8 @@ export function createResumeServer({
         aiAvailable: !!env.RESUME_AI_API_KEY && !!cloud,
         cloudAvailable: !!cloud,
       });
+    if (url.pathname === "/api/cloud-check" && req.method === "GET")
+      return json(200, await checkCloud());
     if (url.pathname === "/api/config")
       return json(200, cloud || { supabaseUrl: null, supabaseAnonKey: null });
     if (url.pathname === "/api/recommend" && req.method === "POST") {

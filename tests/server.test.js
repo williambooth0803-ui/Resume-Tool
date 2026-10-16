@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createResumeServer, publicCloudConfig } from "../server/index.js";
+import {
+  createResumeServer,
+  publicCloudConfig,
+  inspectCloudConfig,
+} from "../server/index.js";
 import { blankProfile } from "../src/model.js";
 const env = {
   SUPABASE_URL: "https://example.supabase.co",
@@ -95,5 +99,92 @@ test("manual app remains usable with cloud and AI unconfigured", async (t) => {
   assert.equal(
     (await fetch(base + "/api/recommend", { method: "POST" })).status,
     503,
+  );
+});
+
+test("connection diagnosis normalizes whitespace and identifies provider/project mix-ups without exposing keys", () => {
+  const padded = {
+    ...env,
+    SUPABASE_URL: " " + env.SUPABASE_URL + "\n",
+    SUPABASE_ANON_KEY: " " + env.SUPABASE_ANON_KEY + "\n",
+  };
+  assert.deepEqual(publicCloudConfig(padded), publicCloudConfig(env));
+  assert.equal(inspectCloudConfig(padded).details.normalizedWhitespace, true);
+  const openai = { ...env, SUPABASE_ANON_KEY: "sk-fake-provider-key" };
+  assert.equal(inspectCloudConfig(openai).details.code, "wrong_provider_key");
+  assert.ok(
+    !JSON.stringify(inspectCloudConfig(openai).details).includes(
+      openai.SUPABASE_ANON_KEY,
+    ),
+  );
+  const key = `header.${Buffer.from(JSON.stringify({ role: "anon", ref: "different-project" })).toString("base64url")}.sig`;
+  assert.equal(
+    inspectCloudConfig({ ...env, SUPABASE_ANON_KEY: key }).details.code,
+    "project_mismatch",
+  );
+  assert.equal(
+    inspectCloudConfig({ ...env, SUPABASE_ANON_KEY: '"sb_publishable_test"' })
+      .details.code,
+    "invalid_key_format",
+  );
+});
+test("read-only cloud check verifies key acceptance, caches requests, and never exposes key values", async (t) => {
+  let calls = 0;
+  const base = await serve(t, {
+    env,
+    fetchImpl: async (url, options) => {
+      calls++;
+      assert.equal(url, "https://example.supabase.co/auth/v1/settings");
+      assert.equal(options.headers.apikey, env.SUPABASE_ANON_KEY);
+      assert.equal(options.method, undefined);
+      return Response.json({ external: { email: true } });
+    },
+  });
+  const first = await (await fetch(base + "/api/cloud-check")).json();
+  assert.equal(first.ok, true);
+  assert.equal(first.code, "key_accepted");
+  assert.equal(first.emailProviderEnabled, true);
+  await fetch(base + "/api/cloud-check");
+  assert.equal(calls, 1);
+  assert.ok(!JSON.stringify(first).includes(env.SUPABASE_ANON_KEY));
+  assert.ok(!JSON.stringify(first).includes(env.RESUME_AI_API_KEY));
+});
+test("rejected credentials produce actionable safe diagnostics rather than returning upstream error bodies", async (t) => {
+  const base = await serve(t, {
+    env,
+    fetchImpl: async () =>
+      new Response("upstream-private-detail", { status: 401 }),
+  });
+  const result = await (await fetch(base + "/api/cloud-check")).json();
+  assert.equal(result.code, "key_rejected");
+  assert.equal(result.ok, false);
+  assert.match(result.message, /before your email and password/);
+  assert.ok(!JSON.stringify(result).includes("upstream-private-detail"));
+});
+test("connection check distinguishes missing configuration, disabled email, and unavailable service", async (t) => {
+  const missing = await serve(t, {
+    env: {},
+    fetchImpl: () => {
+      throw Error("Must not request");
+    },
+  });
+  assert.equal(
+    (await (await fetch(missing + "/api/cloud-check")).json()).code,
+    "missing_configuration",
+  );
+  const disabled = await serve(t, {
+    env,
+    fetchImpl: async () => Response.json({ external: { email: false } }),
+  });
+  const result = await (await fetch(disabled + "/api/cloud-check")).json();
+  assert.equal(result.ok, true);
+  assert.equal(result.emailProviderEnabled, false);
+  const unavailable = await serve(t, {
+    env,
+    fetchImpl: async () => new Response("", { status: 503 }),
+  });
+  assert.equal(
+    (await (await fetch(unavailable + "/api/cloud-check")).json()).code,
+    "service_unavailable",
   );
 });

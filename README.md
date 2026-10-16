@@ -62,6 +62,7 @@ npm run test:browser
 npm run test:autosave
 npm run test:features
 npm run test:cloud
+npm run test:connection
 ```
 
 Set `RESUME_TEST_URL` to a different local server. Browser checks use system Chromium if available, otherwise Playwright's installed Chromium. Core checks cover migrations, history, parsing/deduplication, quality checks, application snapshots, AI authentication and rate limiting, and PostgreSQL row policies. Browser checks exercise Word/PDF contents, imports, autosave/recovery, new workflows, mobile layout, and simulated cross-device cloud sync. Live Supabase/AI services are not exercised without deployment configuration and credentials.
