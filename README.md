@@ -1,6 +1,6 @@
 # Resume Studio
 
-A local-first resume workspace with a complete manual workflow and optional AI recommendations.
+A resume workspace with manual editing, reviewed document imports, automatic saving, recoverable history, application tracking, and optional accounts, cloud sync, and AI tailoring.
 
 ## Run
 
@@ -11,32 +11,45 @@ npm ci
 npm run dev
 ```
 
-Vite serves the interface on port 5173 and proxies `/api` to a local Node server on port 3001. To run a production build locally:
+Vite serves the interface on port 5173 and proxies `/api` to the Node server on port 3001. For a production build locally:
 
 ```sh
 npm run build
 npm start
 ```
 
-The server binds to loopback on port 3001 by default (override with `HOST` and `PORT`). On Render (`RENDER=true`), it binds to `0.0.0.0` and uses Render’s supplied `PORT`. This first version is intended for a private local workspace, not deployment as a public multi-user service. Authentication, shared accounts, server storage, and server-side rate limits are not included.
+The server binds to loopback on port 3001 by default (override with `HOST` and `PORT`). On Render (`RENDER=true`), it binds to `0.0.0.0` and uses the supplied `PORT`.
 
-## Workflow
+## Features
 
-1. Fill in your master profile, or import old PDF, DOCX, and TXT resumes in the Resume library.
-2. Review extracted text, edit it, and append selected information to a profile section. Extraction is not automatic deduplication or structured parsing. Scanned PDFs need external OCR. Original files are not retained; extracted text is saved.
-3. Create a resume version. Each is an independent snapshot of the master profile. Edit it, choose included sections, and optionally add a target job description.
-4. Download an editable `.docx`. Duplicating a version preserves its content and included sections.
-5. Download a JSON backup regularly. Restore replaces the current workspace after confirmation.
+- **Master profile and resume versions:** Each version starts as an independent profile copy. Choose included sections and edit without changing other resumes.
+- **Reviewed imports:** Read PDF, DOCX, and TXT documents in the browser. Analyze common headings into profile fields, edit suggestions, choose approved fields, and skip duplicate section lines. Ambiguous material remains in the extracted source for manual review. Scanned PDFs need external OCR. Original files are not stored.
+- **Autosave and recovery:** Typing saves after a short pause, with a two-second maximum during continuous input. Leaving fields or the page flushes edits. The header distinguishes saved, pending, and failed writes. Download backups when storage is unavailable.
+- **Undo, redo, and history:** Recover changes and deleted resumes/documents/applications, restore workspace snapshots, and create named checkpoints. Up to 20 snapshots are retained within a storage budget; large workspaces may retain fewer. Download JSON backups for longer-term retention.
+- **Templates and exports:** Choose Classic, Modern, or Compact layouts. Download editable Word documents and PDFs with selectable text. Preview formatting is approximate; PDF fonts are bundled Roboto. Use Word with a suitable font for unsupported scripts.
+- **Application tracking:** Store role, employer, job URL, status, application date, and notes. Attach a resume snapshot that remains unchanged if the source resume is edited or deleted. Export attached documents later.
+- **Quality checks:** Flag missing contact details, inconsistent or reversed dates, long resumes, and broad wording. These are practical checks, not a guarantee of compatibility with every hiring system.
+- **Manual tailoring:** Rank existing profile sections using job-description keywords and identify unmatched terms. Add only existing information, with duplicate lines skipped. No credentials are needed.
+- **AI tailoring:** Optional, authenticated recommendations explain the supplied source sections and suggested relevance. Suggestions remain review-only and are saved with the resume version.
+- **Comparisons:** Compare changed profile fields and included/excluded sections between two versions.
+- **Accounts and cloud sync:** Supabase email accounts, separate browser workspaces per account, private per-user database rows, explicit initial upload/download, and revision-checked syncing that stops on conflicts.
 
-Autosave covers profile and version edits, section selection, imported text, document imports/deletions, resume creation/duplication/deletion, and AI recommendations. Typing saves after a short pause (at most every two seconds during continuous input); leaving a field, clicking an action, or leaving/backgrounding the page flushes pending edits immediately. The header shows the last successful autosave time. Failed saves stay marked as unsaved across navigation, and pending edits are retained in memory for retry or backup.
+Existing browser workspaces and older JSON backups migrate automatically. Backups include history and applications, but never account tokens or provider keys. Restoring replaces the current workspace after confirmation and keeps the previous core workspace in history when it fits the retention budget.
 
-All profile data, imported text, recommendations, and versions are stored in this browser’s local storage. They are not synchronized across devices. Clearing site data or using another browser loses access unless you restore a backup. Local storage and backups are unencrypted: use a trusted device. No resume content leaves the browser during the manual workflow.
+Manual use stores data in this browser's local storage and sends no resume content to a server. Connected cloud sync sends the workspace to your Supabase account. AI sends the selected resume and job description to OpenAI only when requested. Use backups, particularly when moving between browsers or website origins.
 
-## Optional AI
+## Enable Supabase and AI on Render
 
-The full manual workflow needs no credentials. To enable recommendations, set `RESUME_AI_API_KEY` securely in the server environment before starting the app. Never put it in frontend code or commit a key. Optionally set `RESUME_AI_MODEL` (default `gpt-4o-mini`). The server calls `api.openai.com`; this destination must be allowed by your network policy.
+See [the deployment guide](docs/DEPLOYMENT.md) for your project URL, SQL migration, authentication settings, Render environment variables, and the first-device/second-device workflow.
 
-AI is called only when the user clicks **Get AI recommendations**. The current resume version and job description are sent to OpenAI, not the imported document library. Recommendations appear as text; they never automatically edit a resume. Review them for factual accuracy. No AI credentials are shipped, and live AI behavior requires an authorized key and network access.
+- Build command: `npm ci --include=dev && npm run build` (no trailing period).
+- Start command: `npm start`.
+- Health check: `/api/health`.
+- Node version: Node 24.x from `engines.node`.
+
+The `render.yaml` file supports creating a new Render Blueprint; it does not modify an existing service's dashboard settings. Publishing a Codex environment does not push source changes or update a Render service.
+
+Accounts need `SUPABASE_URL` and `SUPABASE_ANON_KEY` plus the database migration. Use only a publishable/anon key, never a service-role key. Optional AI needs `RESUME_AI_API_KEY`; `RESUME_AI_MODEL` is optional. `.env.example` documents names; `npm start` does not automatically read `.env`. Set variables in the process environment or use Node's supported `--env-file` option during local development.
 
 ## Validation
 
@@ -47,21 +60,8 @@ npm run build
 npx playwright install chromium
 npm run test:browser
 npm run test:autosave
+npm run test:features
+npm run test:cloud
 ```
 
-Browser smoke checks cover profile persistence, imports, independent versions, inclusion toggles, DOCX content, duplication, and backup downloads. Set `RESUME_TEST_URL` to test a different local server.
-
-## Deploy on Render
-
-Push the application files, including `package.json` and `package-lock.json`, to GitHub first. Publishing a Codex environment does not push source changes.
-
-Create a Node web service connected to this repository’s `main` branch, using the repository root (leave Root Directory blank):
-
-- Build command: `npm ci --include=dev && npm run build` (no trailing period).
-- Start command: `npm start`.
-- Health check path: `/api/health`.
-- Node version: resolved from `engines.node` as Node 24.x. Remove or update a conflicting `NODE_VERSION` override in the Render dashboard.
-
-The included `render.yaml` also supports creating a new service as a Render Blueprint. It does not override an existing service’s dashboard settings.
-
-Keep AI disabled on a public deployment until authentication and usage controls are added. The manual workspace needs no API key. Resume data remains local to each browser and website origin; use backup/restore to move data to the deployed site.
+Set `RESUME_TEST_URL` to a different local server. Browser checks use system Chromium if available, otherwise Playwright's installed Chromium. Core checks cover migrations, history, parsing/deduplication, quality checks, application snapshots, AI authentication and rate limiting, and PostgreSQL row policies. Browser checks exercise Word/PDF contents, imports, autosave/recovery, new workflows, mobile layout, and simulated cross-device cloud sync. Live Supabase/AI services are not exercised without deployment configuration and credentials.

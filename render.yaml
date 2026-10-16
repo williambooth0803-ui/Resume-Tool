@@ -6,3 +6,6 @@ services:
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
+    envVars:
+      - key: SUPABASE_URL
+        value: https://inhqxwratimjvzsnuwik.supabase.co
