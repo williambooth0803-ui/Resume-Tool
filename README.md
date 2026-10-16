@@ -23,10 +23,10 @@ The server binds to loopback on port 3001 by default (override with `HOST` and `
 ## Features
 
 - **Master profile and resume versions:** Each version starts as an independent profile copy. Choose included sections and edit without changing other resumes.
-- **Reviewed imports:** Read PDF, DOCX, and TXT documents in the browser. Analyze common headings into profile fields, edit suggestions, choose approved fields, and skip duplicate section lines. Ambiguous material remains in the extracted source for manual review. Scanned PDFs need external OCR. Original files are not stored.
+- **Reviewed imports:** Read PDF, DOCX, and TXT documents in the browser. Text is automatically sorted into contact details, experience, education, skills, projects, and separate references. PDF extraction uses visual positions to reconstruct words and columns. The organizer repairs common broken words, recognizes spaced/inline headings, groups roles with employers and dates, and joins wrapped duties. Approve the organized information in one step; job-aware merging preserves shared role titles under different employers. Paste extracted text directly if you already have it. Optional AI organization works from source-supported excerpts and requires explicit consent before sending the selected document. Use Replace selected categories to clean up a previously mixed import; earlier profile data remains recoverable in history within its storage budget. Ambiguous material remains in the extracted source for manual review. Scanned PDFs need external OCR. Original files are not stored.
 - **Autosave and recovery:** Typing saves after a short pause, with a two-second maximum during continuous input. Leaving fields or the page flushes edits. The header distinguishes saved, pending, and failed writes. Download backups when storage is unavailable.
 - **Undo, redo, and history:** Recover changes and deleted resumes/documents/applications, restore workspace snapshots, and create named checkpoints. Up to 20 snapshots are retained within a storage budget; large workspaces may retain fewer. Download JSON backups for longer-term retention.
-- **Templates and exports:** Choose Classic, Modern, or Compact layouts. Download editable Word documents and PDFs with selectable text. Preview formatting is approximate; PDF fonts are bundled Roboto. Use Word with a suitable font for unsupported scripts.
+- **Templates and exports:** Choose Classic, Modern, or Compact layouts. Download editable Word documents and PDFs with selectable text. Reference contacts are saved in the master profile and excluded from new resumes unless explicitly included. Preview formatting is approximate; PDF fonts are bundled Roboto. Use Word with a suitable font for unsupported scripts.
 - **Application tracking:** Store role, employer, job URL, status, application date, and notes. Attach a resume snapshot that remains unchanged if the source resume is edited or deleted. Export attached documents later.
 - **Quality checks:** Flag missing contact details, inconsistent or reversed dates, long resumes, and broad wording. These are practical checks, not a guarantee of compatibility with every hiring system.
 - **Manual tailoring:** Rank existing profile sections using job-description keywords and identify unmatched terms. Add only existing information, with duplicate lines skipped. No credentials are needed.
@@ -36,7 +36,7 @@ The server binds to loopback on port 3001 by default (override with `HOST` and `
 
 Existing browser workspaces and older JSON backups migrate automatically. Backups include history and applications, but never account tokens or provider keys. Restoring replaces the current workspace after confirmation and keeps the previous core workspace in history when it fits the retention budget.
 
-Manual use stores data in this browser's local storage and sends no resume content to a server. Connected cloud sync sends the workspace to your Supabase account. AI sends the selected resume and job description to OpenAI only when requested. Use backups, particularly when moving between browsers or website origins.
+Manual use stores data in this browser's local storage and sends no resume content to a server. Connected cloud sync sends the workspace to your Supabase account. AI recommendations send the selected resume and job description to OpenAI only when requested. Optional AI organization sends the selected imported text only after confirmation, including any references in that document. Use backups, particularly when moving between browsers or website origins.
 
 ## Enable Supabase and AI on Render
 
@@ -63,6 +63,7 @@ npm run test:autosave
 npm run test:features
 npm run test:cloud
 npm run test:connection
+npm run test:imports
 ```
 
 Set `RESUME_TEST_URL` to a different local server. Browser checks use system Chromium if available, otherwise Playwright's installed Chromium. Core checks cover migrations, history, parsing/deduplication, quality checks, application snapshots, AI authentication and rate limiting, and PostgreSQL row policies. Browser checks exercise Word/PDF contents, imports, autosave/recovery, new workflows, mobile layout, and simulated cross-device cloud sync. Live Supabase/AI services are not exercised without deployment configuration and credentials.

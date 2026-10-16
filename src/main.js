@@ -12,6 +12,7 @@ import {
 import { createFeatures, featurePages } from "./features.js";
 import { wordBlob, pdfBlob, exportName } from "./exports.js";
 import { createCloud } from "./cloud.js";
+import { pdfPageText } from "./pdf-layout.js";
 const key = "resume-studio-v1";
 let state = emptyState(),
   page = "profile",
@@ -48,6 +49,15 @@ const features = createFeatures({
   getState: () => state,
   current,
   currentImport: () => state.imports.find((i) => i.id === importId),
+  canAIOrganize: () => aiAvailable && cloud.signedIn(),
+  organizeImport,
+  addImport: (name, text) => {
+    const item = { id: crypto.randomUUID(), name, text };
+    state.imports.push(item);
+    importId = item.id;
+    save({ label: "Imported pasted resume" });
+    render();
+  },
   save,
   render,
   toast,
@@ -255,10 +265,10 @@ function toast(message, error = false) {
   box.hidden = false;
 }
 function field(name, value, multiline = false) {
-  return `<label class="field">${label(name)}${multiline ? `<textarea aria-label="${label(name)}" data-field="${name}" rows="${name === "summary" ? 4 : 6}" placeholder="${{ summary: "A concise introduction to your experience and strengths.", experience: "Role · Company · Dates\nDescribe your responsibilities and accomplishments.", education: "Degree · School · Year", skills: "Add the skills you want employers to see.", projects: "Project name\nWhat you built, contributed, or achieved." }[name] || ""}">${esc(value)}</textarea>` : `<input aria-label="${label(name)}" data-field="${name}" value="${esc(value)}" placeholder="${{ name: "Your full name", headline: "Your role or professional focus", email: "you@example.com", phone: "Phone number", location: "City, State", links: "Portfolio or LinkedIn URL" }[name] || ""}">`}</label>`;
+  return `<label class="field">${label(name)}${multiline ? `<textarea aria-label="${label(name)}" data-field="${name}" rows="${name === "summary" ? 4 : 6}" placeholder="${{ summary: "A concise introduction to your experience and strengths.", experience: "Role · Company · Dates\nDescribe your responsibilities and accomplishments.", education: "Degree · School · Year", skills: "Add the skills you want employers to see.", projects: "Project name\nWhat you built, contributed, or achieved.", references: "Name\nRole or relationship\nContact details (include in exports only when needed)." }[name] || ""}">${esc(value)}</textarea>` : `<input aria-label="${label(name)}" data-field="${name}" value="${esc(value)}" placeholder="${{ name: "Your full name", headline: "Your role or professional focus", email: "you@example.com", phone: "Phone number", location: "City, State", links: "Portfolio or LinkedIn URL" }[name] || ""}">`}</label>`;
 }
 function profileEditor(p, version) {
-  return `<div class="card"><div class="card-heading"><div><span class="eyebrow">THE ESSENTIALS</span><h2>Personal details</h2></div><span class="pill">${version ? "This version only" : "Master profile"}</span></div><div class="fields">${["name", "headline", "email", "phone", "location", "links"].map((s) => field(s, p[s])).join("")}</div></div>${sections.map((s) => `<section class="card"><div class="section-top"><h2>${label(s)}</h2>${version ? `<label class="check"><input type="checkbox" data-include="${s}" ${version.included.includes(s) ? "checked" : ""}> Include in export</label>` : ""}</div>${field(s, p[s], true)}</section>`).join("")}`;
+  return `<div class="card"><div class="card-heading"><div><span class="eyebrow">THE ESSENTIALS</span><h2>Personal details</h2></div><span class="pill">${version ? "This version only" : "Master profile"}</span></div><div class="fields">${["name", "headline", "email", "phone", "location", "links"].map((s) => field(s, p[s])).join("")}</div></div>${sections.map((s) => `<section class="card"><div class="section-top"><h2>${label(s)}</h2>${version ? `<label class="check"><input type="checkbox" data-include="${s}" ${version.included.includes(s) ? "checked" : ""}> Include in export</label>` : ""}</div>${s === "references" ? '<p class="privacy-note">Reference contacts are stored separately and excluded from new resumes unless you choose to include them.</p>' : ""}${field(s, p[s], true)}</section>`).join("")}`;
 }
 function preview(v) {
   const p = v.profile;
@@ -290,12 +300,12 @@ function render() {
  ${page === "profile" ? `<div class="info-banner"><span>✦</span><div><strong>A foundation you can keep building.</strong><p>Add your details below, or import a previous resume from your library. New resumes start as independent copies of this profile.</p></div></div><div class="editor-grid"><div>${profileEditor(state.profile)}</div><aside class="tips card"><span class="eyebrow">A LITTLE GUIDANCE</span><h2>Make it yours.</h2><div class="tip"><b>01</b><div><strong>Gather your experience</strong><p>Include past roles, projects, education, and the skills you’ve built.</p></div></div><div class="tip"><b>02</b><div><strong>Keep the full story</strong><p>Your master profile can be longer than a resume. Choose what fits when creating a version.</p></div></div><div class="tip"><b>03</b><div><strong>Keep it factual</strong><p>Use real accomplishments and add numbers only when you can verify them.</p></div></div><button class="secondary full" data-page="imports">Import a past resume ↗</button></aside></div>` : ""}
  ${
    page === "imports"
-     ? `<section class="upload card"><span class="upload-icon">⇧</span><h2>Your experience adds up.</h2><p>Upload PDF, Word (.docx), or plain text files. Review extracted text before adding it to your profile.</p><label class="primary file-button">Choose resumes<input type="file" id="upload" accept=".pdf,.docx,.txt" multiple hidden></label><small>Up to 10 MB per file · Text extraction stays in your browser<br>Scanned PDFs require OCR elsewhere before importing.</small></section><div class="library-grid"><div class="card"><h2>Imported documents <span class="count">${state.imports.length}</span></h2>${state.imports.length ? state.imports.map((i) => `<div class="document-row"><button data-import="${esc(i.id)}">▤ &nbsp; ${esc(i.name)}</button><button class="icon-button" data-delete-import="${esc(i.id)}" aria-label="Delete ${esc(i.name)}">×</button></div>`).join("") : '<p class="muted">Your imported resumes will appear here.</p>'}</div><div class="card">${(() => {
+     ? `<section class="upload card"><span class="upload-icon">⇧</span><h2>Your experience adds up.</h2><p>Upload PDF, Word (.docx), or plain text files. Review extracted text before adding it to your profile.</p><label class="primary file-button">Choose resumes<input type="file" id="upload" accept=".pdf,.docx,.txt" multiple hidden></label><small>Up to 10 MB per file · Text extraction stays in your browser<br>Scanned PDFs require OCR elsewhere before importing.</small></section>${features.pasteForm()}${features.importReview(state.imports.find((i) => i.id === importId))}<div class="library-grid"><div class="card"><h2>Imported documents <span class="count">${state.imports.length}</span></h2>${state.imports.length ? state.imports.map((i) => `<div class="document-row"><button data-import="${esc(i.id)}">▤ &nbsp; ${esc(i.name)}</button><button class="icon-button" data-delete-import="${esc(i.id)}" aria-label="Delete ${esc(i.name)}">×</button></div>`).join("") : '<p class="muted">Your imported resumes will appear here.</p>'}</div><div class="card">${(() => {
          const i = state.imports.find((x) => x.id === importId);
          return i
-           ? `<h2>${esc(i.name)}</h2><p class="muted">Review and edit this text. Copy the relevant details into the right profile section; importing never overwrites your profile.</p><label class="field">Extracted text<textarea id="import-text" rows="15">${esc(i.text)}</textarea></label><div class="import-actions"><label class="field">Add reviewed text to<select id="import-section">${sections.map((s) => `<option value="${s}">${label(s)}</option>`).join("")}</select></label><button class="primary" id="append-import">Append to profile</button></div>`
+           ? `<h2>${esc(i.name)}</h2><p class="muted">Source text is preserved for comparison. Use the automatically organized fields above to add your information.</p><details id="source-details"><summary>View or edit original extracted text</summary><label class="field">Extracted text<textarea id="import-text" rows="15">${esc(i.text)}</textarea></label></details><div class="import-actions"><label class="field">Add reviewed text to<select id="import-section">${sections.map((s) => `<option value="${s}">${label(s)}</option>`).join("")}</select></label><button class="primary" id="append-import">Append to profile</button></div>`
            : '<h2>Review your source material</h2><p class="muted">Select an imported document to review its text. You control what gets added to the master profile.</p>';
-       })()}</div></div>${features.importReview(state.imports.find((i) => i.id === importId))}`
+       })()}</div></div>`
      : ""
  }
  ${page === "versions" ? `<div class="version-tabs">${state.versions.map((x) => `<button class="${x.id === selected ? "chosen" : ""}" data-version="${esc(x.id)}">${esc(x.title)}</button>`).join("")}</div>${v ? `<div class="version-toolbar"><label class="field">Version name<input id="version-title" value="${esc(v.title)}"></label><div class="actions"><button class="secondary" id="duplicate">Duplicate</button><button class="primary" id="export">Download Word ↗</button><button class="secondary" id="export-pdf">Download PDF</button><button class="danger" id="delete-version">Delete</button></div></div><div class="version-grid"><div><div class="card ai-card"><span class="eyebrow">OPTIONAL ASSISTANCE</span><h2>A second pair of eyes.</h2><p class="muted">Paste a job description to get AI recommendations. Nothing changes until you edit it yourself.</p><label class="field">Target job description<textarea id="job" rows="5" placeholder="Paste the job description, or describe the role…">${esc(v.job)}</textarea></label><p class="privacy-note">Only when you request recommendations, this version and job description are sent to OpenAI. Imported documents are not sent.</p><button class="secondary" id="recommend" ${busy || !aiAvailable ? "disabled" : ""}>${busy ? "Getting recommendations…" : aiAvailable ? "✦ Get AI recommendations" : "AI not configured"}</button>${!aiAvailable ? '<p class="muted small">AI is optional. See the README for server configuration.</p>' : ""}${advice ? `<div class="advice" role="status">${v.recommendationsJob && v.recommendationsJob !== v.job ? '<p class="muted">The target job has changed since these suggestions were generated. Request updated recommendations before using them.</p>' : ""}${esc(advice)}</div>` : ""}</div>${features.versionTools(v)}${profileEditor(v.profile, v)}</div><aside class="preview"><div class="preview-label"><span>DOCUMENT PREVIEW</span><span>Word export</span></div>${preview(v)}<p class="small muted">Preview is approximate. Word exports remain fully editable.</p></aside></div>` : `<div class="empty card"><span class="upload-icon">▤</span><h2>A new opportunity starts here.</h2><p>Create your first resume from your master profile, then tailor it to the role.</p><button class="primary" id="first-version">Create your first resume</button></div>`}` : ""}
@@ -513,7 +523,7 @@ async function recommend() {
   const id = v.id,
     epoch = workspaceEpoch,
     request = ++recommendRequest,
-    profile = structuredClone(v.profile),
+    profile = { ...structuredClone(v.profile), references: "" },
     job = v.job;
   busy = true;
   render();
@@ -549,6 +559,32 @@ async function recommend() {
     }
   }
 }
+async function organizeImport(item) {
+  const epoch = workspaceEpoch,
+    source = item.text;
+  const token = await cloud.token();
+  if (epoch !== workspaceEpoch) return null;
+  if (!token)
+    throw Error(
+      "Sign in to use AI organization. Automatic sorting works without an account.",
+    );
+  const response = await fetch("/api/organize", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ text: source }),
+  });
+  const result = await response.json();
+  if (epoch !== workspaceEpoch) return null;
+  if (!response.ok)
+    throw Error(
+      result.error ||
+        "AI organization failed. Your original text is preserved.",
+    );
+  return result.organized;
+}
 async function upload(e) {
   const epoch = workspaceEpoch;
   const files = Array.from(e.target.files);
@@ -579,11 +615,11 @@ async function upload(e) {
         }).promise;
         try {
           for (let n = 1; n <= pdf.numPages; n++) {
-            const content = await (await pdf.getPage(n)).getTextContent();
+            const page = await pdf.getPage(n),
+              content = await page.getTextContent();
             text +=
-              content.items
-                .map((i) => i.str + (i.hasEOL ? "\n" : " "))
-                .join("") + "\n\n";
+              pdfPageText(content.items, page.getViewport({ scale: 1 }).width) +
+              "\n\n";
           }
         } finally {
           await pdf.destroy();
@@ -610,7 +646,7 @@ async function upload(e) {
   render();
   save();
   toast(
-    `${added} document${added === 1 ? "" : "s"} imported.${errors.length ? " " + errors.join("; ") : " Review the extracted text below."}`,
+    `${added} document${added === 1 ? "" : "s"} imported.${errors.length ? " " + errors.join("; ") : " Your information has been automatically sorted into categories below."}`,
     errors.length > 0,
   );
 }
@@ -620,6 +656,7 @@ fetch("/api/health")
   .then((r) => r.json())
   .then((data) => {
     aiAvailable = data.aiAvailable === true;
+    features.updateAIAvailability();
     if (page === "versions") render();
   })
   .catch(() => {});

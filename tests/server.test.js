@@ -188,3 +188,93 @@ test("connection check distinguishes missing configuration, disabled email, and 
     "service_unavailable",
   );
 });
+
+test("AI document organization requires authentication and only accepts source-supported spans", async (t) => {
+  let calls = 0,
+    unsupported = false;
+  const source = "SKILLS\nSQL\nPython\nREFERENCES\nRobin Example";
+  const base = await serve(t, {
+    env,
+    fetchImpl: async (url, options) => {
+      if (url.endsWith("/auth/v1/user"))
+        return Response.json({ id: "organizer-user" });
+      calls++;
+      const body = JSON.parse(options.body);
+      assert.equal(body.response_format.type, "json_schema");
+      assert.match(body.messages[0].content, /VERBATIM/);
+      assert.match(body.messages[0].content, /reference/);
+      return Response.json({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                segments: unsupported
+                  ? [
+                      {
+                        category: "experience",
+                        text: "Invented employer and 500% growth",
+                      },
+                    ]
+                  : [
+                      { category: "skills", text: "SQL\nPython" },
+                      { category: "references", text: "Robin Example" },
+                    ],
+              }),
+            },
+          },
+        ],
+      });
+    },
+  });
+  const request = (auth) =>
+    fetch(base + "/api/organize", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(auth ? { Authorization: "Bearer valid" } : {}),
+      },
+      body: JSON.stringify({ text: source }),
+    });
+  assert.equal((await request(false)).status, 401);
+  assert.equal(calls, 0);
+  const response = await request(true);
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.match(result.organized.profile.skills, /SQL/);
+  assert.match(result.organized.profile.references, /Robin Example/);
+  assert.equal(result.organized.profile.name, "");
+  unsupported = true;
+  assert.equal((await request(true)).status, 502);
+});
+
+test("ordinary AI tailoring omits reference contact details even if a client submits them", async (t) => {
+  const base = await serve(t, {
+    env,
+    fetchImpl: async (url, options) => {
+      if (url.endsWith("/auth/v1/user"))
+        return Response.json({ id: "private-reference-test" });
+      const body = JSON.parse(options.body),
+        request = JSON.parse(body.messages[1].content);
+      assert.equal(request.profile.references, "");
+      assert.ok(!options.body.includes("private-reference@example.com"));
+      return Response.json({
+        choices: [{ message: { content: "Use supported experience." } }],
+      });
+    },
+  });
+  const response = await fetch(base + "/api/recommend", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer valid",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      profile: {
+        ...blankProfile(),
+        references: "private-reference@example.com",
+      },
+      job: "Analyst",
+    }),
+  });
+  assert.equal(response.status, 200);
+});

@@ -1,8 +1,8 @@
-import { sections, createVersion, resumeText } from "./model.js";
+import { sections, resumeText } from "./model.js";
 import {
   templates,
   parseResume,
-  mergeLines,
+  mergeProfileField,
   qualityChecks,
   tailorRecommendations,
   compareVersions,
@@ -39,30 +39,39 @@ export const featurePages = {
 export function createFeatures(ctx) {
   let parsed = null,
     parsedId = null,
+    parsedSource = null,
+    organizing = false,
+    organizeRun = 0,
     appId = null,
     leftId = null,
     rightId = null;
   const state = () => ctx.getState();
   function importReview(item) {
     if (!item) return "";
-    return `<section class="card"><span class="eyebrow">SMART IMPORT · REVIEW FIRST</span><h2>Organize and remove duplicates</h2><p class="muted">Recognize common resume headings and contact details. Review every suggestion before adding it. Unrecognized text stays in the original document.</p><button class="secondary" id="parse-import">Analyze this document</button>${
-      parsed && parsedId === item.id
-        ? `<div id="parsed-review">${Object.entries(parsed.profile)
-            .filter(([, text]) => text.trim())
-            .map(([field, text]) => {
-              const merged = sections.includes(field)
-                ? mergeLines(state().profile[field], text)
-                : null;
-              const checked = sections.includes(field)
-                ? merged.added > 0
-                : !state().profile[field];
-              return `<div class="parsed-field"><label class="check"><input type="checkbox" data-approve="${field}" ${checked ? "checked" : ""}> Add ${label(field)} ${merged ? `(${merged.duplicates} duplicate lines skipped)` : state().profile[field] ? "(replaces current value)" : ""}</label><textarea aria-label="Review ${label(field)}" data-parsed="${field}" rows="3">${esc(text)}</textarea></div>`;
-            })
-            .join(
-              "",
-            )}${parsed.unassigned ? `<details><summary>Unassigned text (review manually)</summary><p class="prewrap">${esc(parsed.unassigned)}</p></details>` : ""}<button class="primary" id="apply-parsed">Add approved information</button></div>`
-        : ""
-    }</section>`;
+    if (parsedId !== item.id || parsedSource !== item.text || !parsed) {
+      parsed = parseResume(item.text);
+      parsedId = item.id;
+      parsedSource = item.text;
+    }
+    const fields = Object.entries(parsed.profile).filter(([, text]) =>
+      text.trim(),
+    );
+    return `<section class="card organized-import"><span class="eyebrow">AUTOMATICALLY ORGANIZED</span><h2>Your information, sorted</h2><p class="muted">Contact details, experience, education, skills, and references are separated below. Review the result, then add the selected information in one step. Matching lines are skipped and existing contact details are kept unless you choose to replace them.</p><div class="actions wrap"><button class="secondary" id="parse-import">Reorganize document</button><button class="secondary" id="ai-organize" ${organizing || !ctx.canAIOrganize() ? "disabled" : ""}>${organizing ? "Organizing…" : "Improve organization with AI"}</button></div><p class="small muted">${parsed.source === "ai" ? "Organized with AI; verify that each fact is under the right person and role." : "Organized locally in your browser. AI is optional and requires sign-in."}</p>${parsed.warnings?.length ? `<p class="import-warning">${parsed.warnings.map(esc).join(" ")}</p>` : ""}<div id="parsed-review"><label class="field spaced">How to add organized categories<select id="import-mode"><option value="merge">Merge with existing information</option><option value="replace">Replace selected categories with this document</option></select></label><p class="small muted">Use Replace to clean up a resume that was previously added with mixed formatting. The previous profile is kept in history when it fits the storage limit.</p>${fields
+      .map(([field, text]) => {
+        const merged = sections.includes(field)
+          ? mergeProfileField(state().profile[field], text, field)
+          : null;
+        const checked = sections.includes(field)
+          ? merged.added > 0
+          : !state().profile[field];
+        return `<div class="parsed-field"><label class="check"><input type="checkbox" data-approve="${field}" ${checked ? "checked" : ""}> Add ${label(field)} ${merged ? `(${merged.duplicates} matching lines already in profile)` : state().profile[field] ? "(replaces current value)" : ""}</label><textarea aria-label="Review ${label(field)}" data-parsed="${field}" rows="${field === "experience" ? 12 : field === "references" ? 8 : 3}">${esc(text)}</textarea></div>`;
+      })
+      .join(
+        "",
+      )}${!fields.length ? "<p>No categories could be identified confidently. Try AI organization or use the source text below.</p>" : ""}${parsed.unassigned ? `<details open class="unassigned"><summary>Needs review — preserved source text</summary><p class="prewrap">${esc(parsed.unassigned)}</p></details>` : ""}<button class="primary" id="apply-parsed" ${fields.length ? "" : "disabled"}>Add approved information</button></div></section>`;
+  }
+  function pasteForm() {
+    return `<section class="card"><h2>Already have extracted text?</h2><label class="field">Paste a resume<textarea id="paste-resume" rows="5" placeholder="Paste the full resume, even if headings and spacing are messy."></textarea></label><button class="secondary spaced" id="organize-paste">Organize pasted resume</button></section>`;
   }
   function versionTools(v) {
     const check = qualityChecks(v),
@@ -153,10 +162,92 @@ export function createFeatures(ctx) {
       if (item) {
         parsed = parseResume(item.text);
         parsedId = item.id;
+        parsedSource = item.text;
         ctx.render();
       }
     });
+    on("organize-paste", "click", () => {
+      const text = document.getElementById("paste-resume").value.trim();
+      if (!text) return ctx.toast("Paste your resume text first.", true);
+      if (text.length > 100000)
+        return ctx.toast(
+          "Paste at most 100,000 characters per document.",
+          true,
+        );
+      ctx.addImport("Pasted resume", text);
+    });
+    document.querySelectorAll("[data-parsed]").forEach((el) =>
+      el.addEventListener("input", () => {
+        parsed.profile[el.dataset.parsed] = el.value;
+      }),
+    );
+    on("ai-organize", "click", async () => {
+      const item = ctx.currentImport();
+      if (!item || organizing) return;
+      if (
+        !confirm(
+          "Send this document’s extracted text, including any reference contact details, to OpenAI for organization? Your master profile will stay unchanged until you approve the result.",
+        )
+      )
+        return;
+      const id = item.id,
+        source = item.text,
+        run = ++organizeRun;
+      organizing = true;
+      ctx.render();
+      let failure;
+      try {
+        const result = await ctx.organizeImport(item);
+        if (!result || run !== organizeRun) return;
+        if (
+          ctx.currentImport()?.id !== id ||
+          ctx.currentImport()?.text !== source
+        )
+          throw Error(
+            "The document changed. Run organization again on the updated source.",
+          );
+        parsed = result;
+        parsedId = id;
+        parsedSource = source;
+      } catch (error) {
+        failure = error.message;
+      } finally {
+        if (run === organizeRun) {
+          organizing = false;
+          ctx.render();
+          if (failure) ctx.toast(failure, true);
+        }
+      }
+    });
+    on("import-mode", "change", (e) => {
+      if (e.target.value === "replace")
+        document.querySelectorAll("[data-approve]").forEach((box) => {
+          if (sections.includes(box.dataset.approve)) box.checked = true;
+        });
+    });
     on("apply-parsed", "click", () => {
+      if (parsedSource !== ctx.currentImport()?.text) {
+        parsed = parseResume(ctx.currentImport().text);
+        parsedSource = ctx.currentImport().text;
+        ctx.render();
+        return ctx.toast(
+          "Categories were updated from your edited source. Review and approve them.",
+        );
+      }
+      const replace =
+        document.getElementById("import-mode").value === "replace";
+      if (
+        replace &&
+        [...document.querySelectorAll("[data-approve]:checked")].some(
+          (box) =>
+            sections.includes(box.dataset.approve) &&
+            state().profile[box.dataset.approve].trim(),
+        ) &&
+        !confirm(
+          "Replace the selected profile categories with this organized document? Other fields stay unchanged.",
+        )
+      )
+        return;
       let count = 0;
       document.querySelectorAll("[data-approve]:checked").forEach((box) => {
         const field = box.dataset.approve,
@@ -165,9 +256,10 @@ export function createFeatures(ctx) {
             .value.trim();
         if (!text) return;
         const old = state().profile[field];
-        state().profile[field] = sections.includes(field)
-          ? mergeLines(old, text).text
-          : text;
+        state().profile[field] =
+          sections.includes(field) && !replace
+            ? mergeProfileField(old, text, field).text
+            : text;
         if (old !== state().profile[field]) count++;
       });
       ctx.save({ label: "Approved structured import" });
@@ -194,9 +286,10 @@ export function createFeatures(ctx) {
       (b) =>
         (b.onclick = () => {
           const s = b.dataset.tailor;
-          ctx.current().profile[s] = mergeLines(
+          ctx.current().profile[s] = mergeProfileField(
             ctx.current().profile[s],
             state().profile[s],
+            s,
           ).text;
           if (!ctx.current().included.includes(s))
             ctx.current().included.push(s);
@@ -297,11 +390,19 @@ export function createFeatures(ctx) {
     reset: () => {
       parsed = null;
       parsedId = null;
+      parsedSource = null;
+      organizing = false;
+      organizeRun++;
       appId = null;
       leftId = null;
       rightId = null;
     },
     importReview,
+    pasteForm,
+    updateAIAvailability: () => {
+      const button = document.getElementById("ai-organize");
+      if (button) button.disabled = organizing || !ctx.canAIOrganize();
+    },
     versionTools,
     historyPage,
     applicationsPage,

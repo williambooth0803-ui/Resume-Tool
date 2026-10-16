@@ -12,7 +12,8 @@
     "test:autosave": "node scripts/autosave-smoke.js",
     "test:features": "node scripts/features-smoke.js",
     "test:cloud": "node scripts/cloud-smoke.js",
-    "test:connection": "node scripts/connection-smoke.js"
+    "test:connection": "node scripts/connection-smoke.js",
+    "test:imports": "node scripts/import-smoke.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

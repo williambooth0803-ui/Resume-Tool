@@ -35,15 +35,13 @@ try {
   await page.getByLabel("Skills", { exact: true }).fill("SQL");
   await saved();
   await nav("imports");
-  await page
-    .locator("#upload")
-    .setInputFiles({
-      name: "structured.txt",
-      mimeType: "text/plain",
-      buffer: Buffer.from(
-        "Ada Example\nada@example.com\nWORK EXPERIENCE\nBuilt reporting tools in 2021–2025\nEDUCATION\nExample University\nSKILLS\nSQL\nPython\nSQL",
-      ),
-    });
+  await page.locator("#upload").setInputFiles({
+    name: "structured.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from(
+      "Ada Example\nada@example.com\nWORK EXPERIENCE\nBuilt reporting tools in 2021–2025\nEDUCATION\nExample University\nSKILLS\nSQL\nPython\nSQL",
+    ),
+  });
   await page
     .locator("#notice")
     .filter({ hasText: "1 document imported." })
@@ -51,7 +49,7 @@ try {
   await page.locator("#parse-import").click();
   assert.equal(
     await page.getByLabel("Review Experience", { exact: true }).inputValue(),
-    "Built reporting tools in 2021–2025",
+    "• Built reporting tools in 2021–2025",
   );
   await page.locator("#apply-parsed").click();
   let state = await data();
@@ -139,13 +137,11 @@ try {
     (await data()).history.some((h) => h.label === "Before restoring history"),
   );
   await nav("imports");
-  await page
-    .locator("#upload")
-    .setInputFiles({
-      name: "exported.pdf",
-      mimeType: "application/pdf",
-      buffer: pdfBytes,
-    });
+  await page.locator("#upload").setInputFiles({
+    name: "exported.pdf",
+    mimeType: "application/pdf",
+    buffer: pdfBytes,
+  });
   await page
     .locator("#notice")
     .filter({ hasText: "1 document imported." })

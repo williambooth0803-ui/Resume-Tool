@@ -4,6 +4,7 @@ export const sections = [
   "education",
   "skills",
   "projects",
+  "references",
 ];
 export const blankProfile = () => ({
   name: "",
@@ -29,13 +30,18 @@ export function createVersion(profile, title, id = crypto.randomUUID()) {
     updated: new Date().toISOString(),
     job: "",
     template: "classic",
-    profile: { ...profile },
-    included: [...sections],
+    profile: { ...blankProfile(), ...profile },
+    included: sections.filter((s) => s !== "references"),
   };
 }
 export function validateState(value) {
-  const validProfile = (p) =>
-    p && Object.keys(blankProfile()).every((k) => typeof p[k] === "string");
+  const validProfile = (p) => {
+    if (p && typeof p === "object" && p.references === undefined)
+      p.references = "";
+    return (
+      p && Object.keys(blankProfile()).every((k) => typeof p[k] === "string")
+    );
+  };
   if (
     !value ||
     !validProfile(value.profile) ||

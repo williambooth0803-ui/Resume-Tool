@@ -1034,3 +1034,30 @@ code {
     text-align: left;
   }
 }
+.organized-import {
+  border-top: 3px solid #5d8964;
+}
+.organized-import .parsed-field textarea {
+  font-size: 13px;
+  line-height: 1.65;
+}
+.organized-import .check {
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.import-warning {
+  padding: 12px;
+  background: #faf4e8;
+  color: #7b633c;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.unassigned {
+  padding: 15px;
+  border: 1px dashed #d8cba8;
+  border-radius: 6px;
+}
+.organized-import .parsed-field {
+  padding-bottom: 15px;
+  border-bottom: 1px solid #edf0e8;
+}

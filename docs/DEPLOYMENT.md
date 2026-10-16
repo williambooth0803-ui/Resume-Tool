@@ -75,3 +75,11 @@ Open **Account & sync → Check Supabase connection**, or open `/api/cloud-check
 - `service_unavailable` / `connection_failed`: Check that the project is running and the Project URL is correct.
 
 Connection checks are cached for 30 seconds per server process. Redeployment reloads configuration and clears that cache. Changing the OpenAI key does not affect Supabase sign-in.
+
+## Automatic resume organization
+
+No additional configuration is needed for automatic local sorting. Existing imports are organized when opened in Resume library, and new PDF/DOCX/TXT uploads or pasted text show editable categories immediately. Click **Add approved information** to merge the selected fields. Experience is merged as job groups so identical role titles and duties are preserved under different employers. References have their own category and are excluded from new resume exports by default.
+
+If old mixed text was already added to the master profile, choose **Replace selected categories with this document**, review the selected categories, and approve the replacement. Undo/history can recover the prior profile within the storage budget. Uncertain material is retained in **Needs review** and the original extracted text remains available. No extractor can reliably recover facts absent from the text layer; scanned PDFs still need OCR.
+
+**Improve organization with AI** uses the same server key, sign-in requirement, and shared 10-request hourly limit as AI tailoring. It sends only the selected document's extracted text after an explicit confirmation. The References field is omitted from ordinary AI tailoring requests; AI organization may include them because they are part of the selected source document. It asks for source excerpts, checks that returned excerpts are present in the normalized source, and preserves omitted material for review. This guards against invented content but does not prove that every job/date or reference has been grouped correctly; approve the result before it changes the profile. Live provider behavior is not verified by the mocked browser/server tests.

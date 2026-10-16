@@ -1,4 +1,4 @@
-import { blankProfile, sections, resumeText } from "./model.js";
+import { sections, resumeText } from "./model.js";
 export const templates = {
   classic: { name: "Classic", font: "Georgia", color: "#263e38" },
   modern: { name: "Modern", font: "Arial", color: "#245b47" },
@@ -108,82 +108,49 @@ export function mergeLines(existing, incoming) {
     duplicates,
   };
 }
-const headings = {
-  summary: [
-    "summary",
-    "professional summary",
-    "profile",
-    "objective",
-    "about me",
-    "career summary",
-  ],
-  experience: [
-    "experience",
-    "work experience",
-    "employment",
-    "employment history",
-    "professional experience",
-    "work history",
-  ],
-  education: ["education", "academic background", "qualifications"],
-  skills: [
-    "skills",
-    "technical skills",
-    "core competencies",
-    "competencies",
-    "expertise",
-  ],
-  projects: [
-    "projects",
-    "selected projects",
-    "personal projects",
-    "certifications",
-    "certificates",
-    "awards",
-  ],
-};
-export function parseResume(text) {
-  const profile = blankProfile(),
-    unassigned = [];
-  let active = null;
-  const lines = text.replace(/\r/g, "").split("\n");
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line) continue;
-    const heading = normalized(line.replace(/:$/, ""));
-    const section = sections.find((s) => headings[s].includes(heading));
-    if (section) {
-      active = section;
+import { formatExperience } from "./importer.js";
+export { parseResume } from "./importer.js";
+export function mergeProfileField(existing, incoming, field) {
+  if (!["experience", "education", "references"].includes(field))
+    return mergeLines(existing, incoming);
+  const blocks = existing
+    .split(/\n\s*\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  let added = 0,
+    duplicates = 0;
+  const identity = (block) => {
+    if (field === "references") return normalized(block.split("\n")[0]);
+    if (field !== "experience") return null;
+    const jobs = formatExperience(block.split("\n")).jobs;
+    if (jobs.length !== 1 || !jobs[0].employer) return null;
+    const j = jobs[0];
+    return [j.employer, j.role, ...j.dates].map(normalized).join("|");
+  };
+  for (const block of incoming
+    .split(/\n\s*\n/)
+    .map((s) => s.trim())
+    .filter(Boolean)) {
+    const exact = blocks.findIndex((b) => normalized(b) === normalized(block));
+    if (exact >= 0) {
+      duplicates += block.split("\n").filter(Boolean).length;
       continue;
     }
-    if (active) profile[active] += (profile[active] ? "\n" : "") + line;
-    else unassigned.push(line);
+    const key = identity(block),
+      index = key ? blocks.findIndex((b) => identity(b) === key) : -1;
+    if (index >= 0) {
+      const merged = mergeLines(blocks[index], block);
+      blocks[index] = merged.text.replace(/\n\n/g, "\n");
+      added += merged.added;
+      duplicates += merged.duplicates;
+    } else {
+      blocks.push(block);
+      added += block.split("\n").filter(Boolean).length;
+    }
   }
-  const intro = unassigned.join("\n");
-  profile.email =
-    (intro.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i) || [])[0] || "";
-  profile.phone =
-    (intro.match(
-      /(?:\+\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\b\d{3})[ .-]\d{3}[ .-]\d{4}\b/,
-    ) || [])[0] || "";
-  profile.links = (
-    intro.match(
-      /(?:https?:\/\/|www\.)[^\s|]+|(?:linkedin\.com|github\.com)\/[^\s|]+/gi,
-    ) || []
-  ).join(" · ");
-  const first = unassigned[0] || "";
-  if (
-    /^[\p{L} .'-]{3,70}$/u.test(first) &&
-    first.split(/\s+/).length >= 2 &&
-    first.split(/\s+/).length <= 5
-  )
-    profile.name = first;
-  // Preserve ambiguous material for explicit user review instead of guessing its section.
-  return {
-    profile,
-    unassigned: unassigned.filter((line) => line !== profile.name).join("\n"),
-  };
+  return { text: blocks.join("\n\n"), added, duplicates };
 }
+
 export function qualityChecks(version) {
   const p = version.profile,
     text = resumeText(version),
@@ -266,6 +233,7 @@ export function jobKeywords(job) {
 export function tailorRecommendations(profile, job) {
   const keywords = jobKeywords(job);
   const ranked = sections
+    .filter((s) => s !== "references")
     .map((section) => {
       const text = profile[section];
       const matches = keywords.filter((k) => text.toLowerCase().includes(k));
