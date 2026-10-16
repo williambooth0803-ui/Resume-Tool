@@ -73,7 +73,8 @@ export function validateState(value) {
       (i) =>
         typeof i.id === "string" &&
         typeof i.name === "string" &&
-        typeof i.text === "string",
+        typeof i.text === "string" &&
+        (i.organization === undefined || validOrganization(i.organization)),
     )
   )
     throw new Error("Invalid document in backup.");
@@ -155,4 +156,26 @@ function validateCore(data) {
   } catch {
     return false;
   }
+}
+
+export function validOrganization(value) {
+  return (
+    !!value &&
+    typeof value.sourceText === "string" &&
+    ["automatic", "ai"].includes(value.method) &&
+    Array.isArray(value.warnings) &&
+    value.warnings.every((line) => typeof line === "string") &&
+    Array.isArray(value.items) &&
+    new Set(value.items.map((row) => row?.id)).size === value.items.length &&
+    value.items.every(
+      (row) =>
+        row &&
+        typeof row.id === "string" &&
+        [...Object.keys(blankProfile()), "unassigned"].includes(row.category) &&
+        typeof row.text === "string" &&
+        typeof row.group === "string" &&
+        ["text", "employer", "role", "date", "duty"].includes(row.kind) &&
+        typeof row.selected === "boolean",
+    )
+  );
 }

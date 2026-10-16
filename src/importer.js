@@ -85,7 +85,7 @@ const phonePattern =
 const rolePattern =
   /\b(?:intern|engineer|developer|manager|director|assistant|coordinator|specialist|teacher|pastor|leader|designer|analyst|consultant|musician|volunteer|nurse|supervisor|administrator|technician|associate|officer)\b/i;
 const actionPattern =
-  /^(?:[•*\-]\s*)?(?:serve[ds]?|plan(?:ned)?|lead|led|set up|represent(?:ed)?|manage[ds]?|assist(?:ed)?|direct(?:ed)?|play(?:ed)?|design(?:ed)?|organize[ds]?|create[ds]?|carry|carried|build|built|develop(?:ed)?|implement(?:ed)?|support(?:ed)?|coordinate[ds]?|prepare[ds]?|execute[ds]?|maintain(?:ed)?|improve[ds]?|deliver(?:ed)?|achieve[ds]?|train(?:ed)?|teach|taught|conduct(?:ed)?|perform(?:ed)?|work(?:ed)?|research(?:ed)?|write|wrote|establish(?:ed)?|motivate[ds]?|communicate[ds]?|increas(?:e|ed)|reduc(?:e|ed))\b/i;
+  /^(?:[•*\-]\s*)?(?:serve[ds]?|plan(?:ned)?|lead|led|set up|represent(?:ed)?|manage[ds]?|assist(?:ed)?|direct(?:ed)?|play(?:ed)?|design(?:ed)?|organize[ds]?|create[ds]?|carry|carried|build|built|develop(?:ed)?|implement(?:ed)?|support(?:ed)?|coordinate[ds]?|prepare[ds]?|execute[ds]?|maintain(?:ed)?|improve[ds]?|deliver(?:ed)?|achieve[ds]?|train(?:ed)?|teach|taught|conduct(?:ed)?|perform(?:ed)?|work(?:ed)?|research(?:ed)?|write|wrote|establish(?:ed)?|motivate[ds]?|communicate[ds]?|increas(?:e|ed)|reduc(?:e|ed)|facilitate[ds]?|oversee|oversaw|collaborate[ds]?|provide[ds]?|supervise[ds]?|mentor(?:ed)?|evaluate[ds]?|present(?:ed)?|produce[ds]?|arrange[ds]?|recruit(?:ed)?)\b/i;
 const institutionPattern =
   /\b(?:university|college|conservatory|institute|academy|high school)\b/i;
 const educationPattern =
@@ -113,7 +113,8 @@ export function normalizeResumeText(input) {
     .replace(/\r\n?/g, "\n")
     .replace(/\u00ad/g, "")
     .replace(/[\u200b\ufeff]/g, "")
-    .replace(/\u00a0/g, " ");
+    .replace(/\u00a0/g, " ")
+    .replace(/[•●▪◦‣]\s*/g, "\n• ");
   for (const word of repairedWords) {
     const re = new RegExp(`\\b${word.split("").join("[ \\t]*")}\\b`, "gi");
     text = text.replace(re, (match) => match.replace(/[ \t]/g, ""));
@@ -264,7 +265,8 @@ export function formatExperience(lines) {
     } else if (
       job.bullets.length &&
       !actionPattern.test(lines[i]) &&
-      !/^[•*\-]/.test(lines[i])
+      !/^[•*\-]/.test(lines[i]) &&
+      !(/[.!?]$/.test(job.bullets.at(-1)) && /^[\p{Lu}]/u.test(line))
     )
       job.bullets[job.bullets.length - 1] += " " + line;
     else job.bullets.push(line);
@@ -291,7 +293,12 @@ function formatEducation(lines) {
   const schools = content.filter(isInstitution);
   if (schools.length === 1)
     return [schools[0], ...content.filter((x) => x !== schools[0])].join("\n");
-  return content.join("\n");
+  return content
+    .map((line, index) =>
+      isInstitution(line) && index > 0 ? `\n${line}` : line,
+    )
+    .join("\n")
+    .trim();
 }
 export function formatImportProfile(profile) {
   const result = { ...blankProfile(), ...profile };
@@ -315,8 +322,10 @@ export function parseResume(input) {
     seenWork = false,
     seenSection = false;
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i],
+    const rawLine = lines[i],
+      line = cleanBullet(rawLine),
       heading = headingFor(line);
+    if (!line) continue;
     if (heading) {
       active = heading;
       currentRef = null;
@@ -333,8 +342,9 @@ export function parseResume(input) {
       isName(line) &&
       !actionPattern.test(line) &&
       (active === "references" || seenWork || !!profile.email) &&
-      phonePattern.test(following) &&
-      emailPattern.test(following);
+      (active === "references"
+        ? phonePattern.test(following) || emailPattern.test(following)
+        : phonePattern.test(following) && emailPattern.test(following));
     if (refStart) {
       currentRef = { name: line, details: [] };
       refs.push(currentRef);
@@ -450,7 +460,8 @@ export function parseResume(input) {
       else buckets.skills.push(line);
       continue;
     }
-    if (active && buckets[active]) buckets[active].push(line);
+    if (active && buckets[active])
+      buckets[active].push(active === "experience" ? rawLine : line);
     else if (buckets.skills.length && /^(?:and|or)\b/.test(line))
       buckets.skills[buckets.skills.length - 1] += " " + line;
     else unassigned.push(line);

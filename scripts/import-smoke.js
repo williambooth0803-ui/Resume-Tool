@@ -21,6 +21,11 @@ const base = process.env.RESUME_TEST_URL || "http://127.0.0.1:5173",
 const nav = (id) => page.locator(`[data-page="${id}"]`).first().click();
 const snapshot = () =>
   page.evaluate(() => JSON.parse(localStorage.getItem("resume-studio-v1")));
+async function categoryText(page, category) {
+  return page
+    .locator(`[data-item-category="${category}"] [data-item-text]`)
+    .evaluateAll((rows) => rows.map((row) => row.value).join("\n"));
+}
 async function wordText() {
   const [download] = await Promise.all([
     page.waitForEvent("download"),
@@ -39,13 +44,10 @@ try {
   await page.locator("#organize-paste").click();
   assert.ok(await page.locator("#parsed-review").isVisible());
   assert.match(
-    await page.getByLabel("Review Education", { exact: true }).inputValue(),
+    await categoryText(page, "education"),
     /BM: Church Music - Voice/,
   );
-  assert.match(
-    await page.getByLabel("Review References", { exact: true }).inputValue(),
-    /DAN EXAMPLE/,
-  );
+  assert.match(await categoryText(page, "references"), /DAN EXAMPLE/);
   assert.equal((await snapshot()).profile.experience, "");
   await page.locator("#apply-parsed").click();
   let state = await snapshot();
@@ -97,39 +99,121 @@ try {
   );
   const pdf = await sourcePage.pdf({ format: "Letter" });
   await sourcePage.close();
-  await page
-    .locator("#upload")
-    .setInputFiles({
-      name: "two-columns.pdf",
-      mimeType: "application/pdf",
-      buffer: pdf,
-    });
+  await page.locator("#upload").setInputFiles({
+    name: "two-columns.pdf",
+    mimeType: "application/pdf",
+    buffer: pdf,
+  });
   await page
     .locator("#notice")
     .filter({ hasText: "1 document imported." })
     .waitFor();
+  assert.match(await categoryText(page, "experience"), /Plan and lead worship/);
   assert.match(
-    await page.getByLabel("Review Experience", { exact: true }).inputValue(),
-    /Plan and lead worship/,
-  );
-  assert.match(
-    await page.getByLabel("Review Education", { exact: true }).inputValue(),
+    await categoryText(page, "education"),
     /BM: Church Music - Voice/,
   );
-  assert.match(
-    await page.getByLabel("Review References", { exact: true }).inputValue(),
-    /robin@example.com/,
-  );
-  assert.equal(
-    await page.getByLabel("Review Email", { exact: true }).count(),
-    0,
-  );
+  assert.match(await categoryText(page, "references"), /robin@example.com/);
+  assert.equal(await page.locator('[data-item-category="email"]').count(), 0);
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   );
+  // Item corrections, splits, reassignment and choices must survive a reload.
+  const edits = await browser.newPage();
+  edits.on("pageerror", (e) => errors.push(e.message));
+  await edits.goto(base);
+  await edits.locator('[data-page="imports"]').first().click();
+  await edits
+    .locator("#paste-resume")
+    .fill(`Available on weekends\n${fixture}`);
+  await edits.locator("#organize-paste").click();
+  assert.equal(await edits.locator("[data-item-id]").count(), 54);
+  async function rowFor(text) {
+    const id = await edits
+      .locator("[data-item-text]")
+      .evaluateAll(
+        (rows, text) =>
+          rows.find((row) => row.value === text)?.closest("[data-item-id]")
+            .dataset.itemId,
+        text,
+      );
+    assert.ok(id, `Missing item: ${text}`);
+    return edits.locator(`[data-item-id="${id}"]`);
+  }
+  let row = await rowFor("ProPresenter");
+  await row
+    .locator("[data-item-text]")
+    .fill("Lighting operation\nAudio mixing");
+  await row.locator("summary").click();
+  await row.locator("[data-item-split]").click();
+  assert.equal(await edits.locator("[data-item-id]").count(), 55);
+  row = await rowFor("Available on weekends");
+  assert.equal(await row.locator("[data-item-selected]").isEnabled(), false);
+  await row.locator("[data-item-move]").selectOption("skills");
+  row = await rowFor("Lighting operation");
+  await row.locator("[data-item-move]").selectOption("experience");
+  row = await rowFor("Lighting operation");
+  await row.locator("summary").click();
+  await row.locator("[data-item-group]").selectOption("job-2");
+  row = await rowFor("Serve on frontline praise team");
+  await row.locator("[data-item-selected]").uncheck();
+  await edits.reload();
+  await edits.locator('[data-page="imports"]').first().click();
+  await edits.locator("[data-import]").first().click();
+  row = await rowFor("Serve on frontline praise team");
+  assert.equal(await row.locator("[data-item-selected]").isChecked(), false);
+  row = await rowFor("Lighting operation");
+  assert.equal(
+    await row.locator("[data-item-move]").inputValue(),
+    "experience",
+  );
+  assert.equal(await row.locator("[data-item-group]").inputValue(), "job-2");
+  await edits.locator("#apply-parsed-top").click();
+  let edited = await edits.evaluate(() =>
+    JSON.parse(localStorage.getItem("resume-studio-v1")),
+  );
+  assert.match(edited.profile.skills, /Audio mixing/);
+  assert.match(edited.profile.skills, /Available on weekends/);
+  assert.doesNotMatch(
+    edited.profile.experience,
+    /Serve on frontline praise team/,
+  );
+  assert.doesNotMatch(
+    edited.profile.experience.split("\n\n")[0],
+    /Lighting operation/,
+  );
+  assert.match(
+    edited.profile.experience.split("\n\n")[1],
+    /Lighting operation/,
+  );
+  assert.equal(
+    edited.imports[0].text,
+    `Available on weekends\n${fixture}`.trim(),
+  );
+  await edits.locator("#undo").click();
+  edited = await edits.evaluate(() =>
+    JSON.parse(localStorage.getItem("resume-studio-v1")),
+  );
+  assert.equal(edited.profile.experience, "");
+  assert.ok(
+    edited.imports[0].organization.items.some(
+      (item) => item.text === "Audio mixing",
+    ),
+  );
+  await edits.setViewportSize({ width: 390, height: 844 });
+  assert.ok(
+    await edits.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  );
+  await edits
+    .locator('[data-review-category="experience"]')
+    .scrollIntoViewIfNeeded();
+  await edits.screenshot({ path: "/tmp/resume-items-mobile.png" });
+  await edits.close();
   // Authenticated AI organization is explicit and does not apply or alter source text on its own.
   const ai = await browser.newPage();
   ai.on("pageerror", (e) => errors.push(e.message));
@@ -220,13 +304,10 @@ try {
     .locator("#notice")
     .filter({ hasText: "Organization unavailable; source preserved." })
     .waitFor();
-  assert.match(
-    await ai.getByLabel("Review Skills", { exact: true }).inputValue(),
-    /SQL/,
-  );
+  assert.match(await categoryText(ai, "skills"), /SQL/);
   assert.deepEqual(errors, []);
   console.log(
-    "Import browser checks passed: automatic paste/upload sorting, intact job groups, separated contacts/references, one-step merge, duplicate prevention, cleanup replacement with undo, reference export opt-in, real two-column PDF, mobile layout, explicit AI preview, and failure recovery.",
+    "Import browser checks passed: individual items, automatic paste/upload sorting, intact job groups, separated contacts/references, selective import, split/edit/move with autosaved reload recovery, merge deduplication, replacement and undo, reference export opt-in, real two-column PDF, mobile layout, explicit AI preview, and failure recovery.",
   );
 } catch (e) {
   console.log(await page.locator("body").innerText());

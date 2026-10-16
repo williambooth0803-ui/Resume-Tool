@@ -28,7 +28,7 @@ try{
  await page.getByRole('status').filter({hasText:'3 documents imported.'}).waitFor();
  assert.ok((await page.locator('#import-text').inputValue()).includes('Designed accessible products'));
  await page.locator('[data-import]').filter({hasText:'previous.txt'}).click();
- await page.locator('#import-section').selectOption('experience');await page.getByRole('button',{name:'Append to profile'}).click();
+ await page.locator('#source-details summary').click();await page.locator('#import-section').selectOption('experience');await page.getByRole('button',{name:'Append to profile'}).click();
  await page.getByRole('button',{name:'Master profile',exact:false}).click();assert.ok((await page.getByLabel('Experience',{exact:true}).inputValue()).includes('Coordinated a volunteer team.'));
  const [backup]=await Promise.all([page.waitForEvent('download'),page.getByRole('button',{name:'Download backup'}).click()]);
  const backupBytes=await readFile(await backup.path());const snapshot=JSON.parse(backupBytes.toString());assert.equal(snapshot.versions.length,2);assert.equal(snapshot.imports.length,3);

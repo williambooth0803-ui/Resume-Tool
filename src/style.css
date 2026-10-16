@@ -1037,6 +1037,94 @@ code {
 .organized-import {
   border-top: 3px solid #5d8964;
 }
+
+.item-totals {
+  margin: 22px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #365840;
+}
+.item-category {
+  border-top: 1px solid #dfe5da;
+  margin: 22px 0;
+  padding-top: 18px;
+}
+.item-category .section-top {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.item-category h3 {
+  margin: 0;
+}
+.item-record {
+  margin: 18px 0;
+}
+.item-record h4 {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: #eef2e9;
+  overflow-wrap: anywhere;
+}
+.import-item {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) minmax(150px, 205px);
+  align-items: start;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid #edf0e9;
+}
+.import-item .item-select {
+  margin-top: 28px;
+}
+.item-select span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+  overflow: hidden;
+}
+.import-item .field {
+  min-width: 0;
+}
+.import-item textarea {
+  min-height: 60px;
+  width: 100%;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.item-controls {
+  min-width: 0;
+}
+.item-controls select {
+  width: 100%;
+  font-size: 12px;
+}
+.item-options {
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+.item-options .field {
+  margin: 10px 0;
+}
+.item-options .text-button {
+  font-size: 11px;
+  padding: 4px 0;
+}
+[data-review-category="unassigned"] {
+  border-top-color: #b68b3f;
+}
+@media (max-width: 650px) {
+  .import-item {
+    grid-template-columns: 20px minmax(0, 1fr);
+    gap: 10px;
+  }
+  .item-controls {
+    grid-column: 2;
+  }
+  .item-controls > .field {
+    max-width: 100%;
+  }
+}
 .organized-import .parsed-field textarea {
   font-size: 13px;
   line-height: 1.65;

@@ -48,8 +48,8 @@ try {
     .waitFor();
   await page.locator("#parse-import").click();
   assert.equal(
-    await page.getByLabel("Review Experience", { exact: true }).inputValue(),
-    "• Built reporting tools in 2021–2025",
+    await page.locator('[data-item-category="experience"] [data-item-text]').inputValue(),
+    "Built reporting tools in 2021–2025",
   );
   await page.locator("#apply-parsed").click();
   let state = await data();
